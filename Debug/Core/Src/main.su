@@ -1,0 +1,13 @@
+../Core/Src/main.c:87:6:HC595write	16	static
+../Core/Src/main.c:109:6:HC595write1	16	static
+../Core/Src/main.c:176:6:NXT_SendNum	24	static
+../Core/Src/main.c:188:6:NXT_SendFloat	48	static
+../Core/Src/main.c:205:6:NXT_SendPB	24	static
+../Core/Src/main.c:218:6:NXT_SendTXT	24	static
+../Core/Src/main.c:267:6:CAN_Rx	8	static
+../Core/Src/main.c:348:5:main	8	static
+../Core/Src/main.c:447:6:SystemClock_Config	72	static
+../Core/Src/main.c:487:13:MX_CAN_Init	48	static
+../Core/Src/main.c:540:13:MX_USART1_UART_Init	8	static
+../Core/Src/main.c:573:13:MX_GPIO_Init	40	static
+../Core/Src/main.c:632:6:Error_Handler	4	static,ignoring_inline_asm
