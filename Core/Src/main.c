@@ -3,16 +3,7 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * @Author			: Rohanta Shaw
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -26,6 +17,11 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include "stm32f1xx_hal.h"
+#include "stm32f1xx_it.h"
+//#include "ShiftingLED.c"
+//#include "can.h"
+
 //#include "Nextion.h"
 /* USER CODE END Includes */
 
@@ -46,24 +42,26 @@
 #define NXT_RX_PORT GPIOA
 
 // pin definition for the first register
-#define DS1_PIN GPIO_PIN_6
-#define DS1_PORT GPIOB
-#define STCP1_PIN GPIO_PIN_7
-#define STCP1_PORT GPIOB
-#define SHCP1_PIN GPIO_PIN_8
-#define SHCP1_PORT GPIOB
-#define MR1_PIN GPIO_PIN_9
-#define MR1_PORT GPIOB
+/*
+#define GPIO_PIN_6 GPIO_PIN_6 //DS1
+#define GPIOB GPIOB
+#define GPIO_PIN_7 GPIO_PIN_7 //STCP1
+#define GPIOB GPIOB
+#define GPIO_PIN_8 GPIO_PIN_8 //SHCP1
+#define GPIOB GPIOB
+#define GPIO_PIN_9 GPIO_PIN_9 //MR1
+#define GPIOB GPIOB*/
 
 // pin definition for the second register
-#define DS2_PIN GPIO_PIN_15
-#define DS2_PORT GPIOA
-#define STCP2_PIN GPIO_PIN_3
-#define STCP2_PORT GPIOB
-#define SHCP2_PIN GPIO_PIN_4
-#define SHCP2_PORT GPIOB
-#define MR2_PIN GPIO_PIN_5
-#define MR2_PORT GPIOB
+/*
+#define GPIO_PIN_15 GPIO_PIN_15 //DS2
+#define GPIOA GPIOA
+#define GPIO_PIN_3 GPIO_PIN_3 //STCP2
+#define GPIOB GPIOB
+#define GPIO_PIN_4 GPIO_PIN_4 //SHCP2
+#define GPIOB GPIOB
+#define GPIO_PIN_5 GPIO_PIN_5 //MR2
+#define GPIOB GPIOB*/
 
 /* USER CODE END PD */
 
@@ -78,12 +76,12 @@ CAN_HandleTypeDef hcan;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+char* deviationCheckFail = "DEV FAIL\r\n";
+char* STM_ded = "STM ded!\r\n";
 float value1, value2;
 char gear;
 
-uint8_t currentVal = 0b00000000, currentVal1 = 0b00000000;
-
+uint8_t currentVal; uint8_t currentVal1;
 uint8_t canData[8];
 
 uint8_t *a_value = (uint8_t *)&canData[0]; //GEAR
@@ -107,17 +105,19 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
 void NXT_SendNum(char *obj, int32_t num);
 void NXT_SendFloat(char *obj, float num, int dp);
 void NXT_SendPB(char *obj, uint16_t num);
 void NXT_SendTXT(char *obj, char val[]);
-
+//void HC595write();
+//void HC595write1();
 
 // function definition for LED Driving
-void updateLEDs(uint16_t val);
-void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef *stcp_port, uint16_t stcp_pin, GPIO_TypeDef *shcp_port, uint16_t schp_pin, GPIO_TypeDef *mr_port, uint16_t mr_pin);
+//void updateLEDs(uint16_t val);
+//void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef *stcp_port, uint16_t stcp_pin, GPIO_TypeDef *shcp_port, uint16_t schp_pin, GPIO_TypeDef *mr_port, uint16_t mr_pin);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -125,7 +125,7 @@ void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef
 CAN_RxHeaderTypeDef RxHeader;
 
 uint8_t cmd_end[3] = {0xFF, 0xFF, 0xFF};
-char msg[50]; int fl=0;
+char msg[50];
 
 //	Predefined functions for sending different data to display
 void NXT_SendNum(char *obj, int32_t num){
@@ -197,15 +197,15 @@ void update_LEDs(uint16_t value){
 			led2 |= (1 << (i-8));
 	}
 	//sending data to first reg
-	shiftOP(led1, DS1_PORT, DS1_PIN, STCP1_PORT, STCP1_PIN, SHCP1_PORT, SHCP1_PIN, MR1_PORT, MR1_PIN);
+	shiftOP(led1, GPIOB, GPIO_PIN_6, GPIOB, GPIO_PIN_7, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9);
 	//sending data to second pin
-	shiftOP(led2, DS2_PORT, DS2_PIN, STCP2_PORT, STCP2_PIN, SHCP2_PORT, SHCP2_PIN, MR2_PORT, MR2_PIN);
+	shiftOP(led2, GPIOA, GPIO_PIN_15, GPIOB, GPIO_PIN_3, GPIOB, GPIO_PIN_4, GPIOB, GPIO_PIN_5);
 
 }
 
 void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef *stcp_port, uint16_t stcp_pin, GPIO_TypeDef *shcp_port, uint16_t shcp_pin, GPIO_TypeDef *mr_port, uint16_t mr_pin){
 
-	HAL_GPIO_WritePin(mr_port, mr_pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(mr_port, mr_pin, GPIO_PIN_RESET); HAL_Delay(1);
 	HAL_GPIO_WritePin(shcp_port, shcp_pin, GPIO_PIN_RESET);
 
 	for(int8_t i = 7 ; i >= 0 ; i--){
@@ -222,124 +222,123 @@ void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef
 //LED DRIVING CODE 2
 void HC595write()
 {
-  HAL_GPIO_WritePin(MR1_PORT, MR1_PIN, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
   HAL_Delay(1); // Ensure the register is cleared
-  HAL_GPIO_WritePin(MR1_PORT, MR1_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
 
     for(int i=0; i<8; i++)
     {
-        if(currentVal & (1<<i))
-        {
-            HAL_GPIO_WritePin(DS1_PORT, DS1_PIN, GPIO_PIN_SET);
-        }
+    	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+    	//HAL_Delay(900);
+    	currentVal = currentVal >> 1;
+    	if(currentVal & (1<<i))
+            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+
         else
-        {
-            HAL_GPIO_WritePin(DS1_PORT, DS1_PIN, GPIO_PIN_RESET);
-        }
-        HAL_GPIO_WritePin(SHCP1_PORT, SHCP1_PIN, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(SHCP1_PORT, SHCP1_PIN, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+        //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+        //HAL_Delay(900);
     }
-    HAL_GPIO_WritePin(STCP1_PORT, STCP1_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(STCP1_PORT, STCP1_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 }
 void HC595write1()
 {
-  HAL_GPIO_WritePin(MR2_PORT, MR2_PIN, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
   HAL_Delay(1); // Ensure the register is cleared
-  HAL_GPIO_WritePin(MR2_PORT, MR2_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
     for(int i=0; i<8; i++)
     {
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+    	HAL_Delay(100);
+    	currentVal1 = currentVal1 >> 1;
         if(currentVal1 & (1<<i))
-        {
-            HAL_GPIO_WritePin(DS2_PORT, DS2_PIN, GPIO_PIN_SET);
-        }
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
         else
-        {
-            HAL_GPIO_WritePin(DS2_PORT, DS2_PIN, GPIO_PIN_RESET);
-        }
-        HAL_GPIO_WritePin(SHCP2_PORT, SHCP2_PIN, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(SHCP2_PORT, SHCP2_PIN, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+        HAL_Delay(100);
     }
-    HAL_GPIO_WritePin(STCP2_PORT, STCP2_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(STCP2_PORT, STCP2_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);
 }
 
-void CAN_Rx(void){
-	/* Waiting for the Message */
-
-	while(! HAL_CAN_GetRxFifoFillLevel(&hcan, CAN_RX_FIFO1));
-
-	if(HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO1, &RxHeader, canData)!= HAL_OK)
-	{
-		Error_Handler();
-	}
-
-
-	if(RxHeader.ExtId == 0x18F00400){
-		// RPM (uint16_t)
-
-		value1 = (float)(*z_value)*0.125;
-		NXT_SendNum("rpm", (int32_t)value1);
-
-		// CALL THE UPDATE LED FUNCTION HERE
-
-		// THESE TWO LINES DO SOMETHING IDK WHAT
-
-		// sprintf(msg,"%0.2f,",value1);
-		// HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
-	}
-/*
-	else if(RxHeader.ExtId == 0x050){
-		gear = (char)(*a_value);
-		NXT_SendNum("gear", (int32_t)gear);
-		sprintf(msg,"Gear : %d \r\n",gear);
-		HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg),1000);
-	}*/
-
-	if(RxHeader.ExtId == 0x0CF00301){
-			// tps
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	NXT_SendTXT("rad_state", "EMPTY"); HAL_Delay(2000);
+	while(! HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO1));
+	NXT_SendTXT("rad_state", "FILL"); HAL_Delay(2000);
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, canData) != HAL_OK)
+    {
+    	Error_Handler();
+    }
+    NXT_SendTXT("rad_state", "NO_ERH"); HAL_Delay(2000);
+    if(RxHeader.ExtId == 0x18F00400){
+    		// RPM (uint16_t)
+    	value1 = (float)(*z_value)*0.125;
+    	NXT_SendNum("rpm", (int32_t)value1);
+    	// CALL THE UPDATE LED FUNCTION HEREAT
+    	// sprintf(msg,"%0.2f,",value1);
+    	// HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    }
+    else if(RxHeader.ExtId == 0x18FEEE00){
+    	// COOLANT
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
 		HAL_Delay(1000);
-		value1 = (float)(*c_value)*1;
-		NXT_SendNum("tpsbar", (int32_t)value1);
-		sprintf(msg,"TPS : %0.2f per\r\n",value1);
-		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-		HAL_Delay(1000);
+   		value1 = (float)(*c_value)*1;
+   		NXT_SendFloat("oil_temp", value1, 2);
+   		sprintf(msg,"oil_temp : %0.2f\n",value1);
+   		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    	if(value1 > 80){
+    		NXT_SendTXT("rad_state", "ON");
+    		sprintf(msg,"rad_state : ON\n");
+    		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    	}
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+    	HAL_Delay(1000);
+    }
+    else if(RxHeader.ExtId == 0x18FEF717){
+    	// BATTERY VOTLAGE
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+    	  HAL_Delay(1000);
+    	value1 = (float)(*e_value)*1;
+    	NXT_SendFloat("bat_v", value1, 2);
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+    	HAL_Delay(1000);
+    }
 
-	}
+    else if(RxHeader.ExtId == 0x050){
+    		gear = (char)(*a_value);
+    		NXT_SendNum("gear", (int32_t)gear);
+    		sprintf(msg,"Gear : %d \r\n",gear);
+    		HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg),1000);
+    }
+    else if(RxHeader.ExtId == 0x0CF00301){
+    		// tps
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+    	HAL_Delay(1000);
+    	value1 = (float)(*c_value)*1;
+    	NXT_SendNum("tpsbar", (int32_t)value1);
+    	sprintf(msg,"TPS : %0.2f per\r\n",value1);
+    	HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+    	HAL_Delay(1000);
+   	}
 
-	else if(RxHeader.ExtId == 0x18FEEE00){
-		// COOLANT
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-			  HAL_Delay(1000);
-		value1 = (float)(*c_value)*1;
-		NXT_SendFloat("oil_temp", value1, 2);
-		sprintf(msg,"Coolant : %0.2f per \r\n",value1);
-		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-			  HAL_Delay(1000);
-	}
-
-	else if(RxHeader.ExtId == 0x18FEF717){
-		// BATTERY VOTLAGE
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-			  HAL_Delay(1000);
-		value1 = (float)(*e_value)*1;
-		NXT_SendFloat("bat_v", value1, 2);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-			  HAL_Delay(1000);
-	}
-
-	else{
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-			sprintf(msg,"ID : %lu \r\n",RxHeader.ExtId);
-			HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
-	}
+    else{
+    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+    	sprintf(msg,"ID : %lu \r\n",RxHeader.ExtId);
+   		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    }
 
 }
-
 /* USER CODE END 0 */
 
 /**
@@ -372,23 +371,22 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN_Init();
   MX_USART1_UART_Init();
-  /* USER CODE BEGIN 2 */
-  if(HAL_CAN_Start(&hcan) != HAL_OK)
-    {
-  	  Error_Handler();
-    }
 
-  currentVal1 = 0b00000000;
-  HC595write1();
-  currentVal =  0b00000000;
+  /* Initialize interrupts */
+  MX_NVIC_Init();
+  /* USER CODE BEGIN 2 */
+  NXT_SendTXT("rad_state", "");
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
+
+  currentVal = (0b01111111);
   HC595write();
-  HAL_Delay(1000);
+  currentVal1 = (0b11111111);
+  //HC595write1();
 
   // INITIALIZING THE VALUES FOR STARTUP
-  /*
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-  HAL_Delay(1000);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+  NXT_SendTXT("t4", "BPS");
+  NXT_SendTXT("t5", "TPS");
+
   NXT_SendNum("rpm", 0);
   NXT_SendNum("speed", 0);
   NXT_SendNum("map", 0);
@@ -397,46 +395,33 @@ int main(void)
   NXT_SendNum("tpsbar", 0);
 
   NXT_SendTXT("gear", "");
-  NXT_SendTXT("rad_state", "");
+  NXT_SendTXT("rad_state", "OFF");
   NXT_SendFloat("afr", 1.00, 2);
   NXT_SendFloat("bat_v", 1.00, 2);
-  NXT_SendFloat("oil_temp", 1.00, 2);*/
-
-
-
+  NXT_SendFloat("oil_temp", 1.00, 2);
   // fill in with the other values. This will signify that the code has started.
+
+  if(HAL_CAN_Start(&hcan) != HAL_OK)
+  {
+  	  NXT_SendTXT("gear", "!CAN");
+  	  Error_Handler();
+  }
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
+  int b=0;
+  while(1)
   {
-	  if(fl==0){
-		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-		    HAL_Delay(1000);
-		    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-		    NXT_SendNum("rpm", 0);
-		    NXT_SendNum("speed", 0);
-		    NXT_SendNum("map", 0);
-
-		    NXT_SendNum("bbar", 0);
-		    NXT_SendNum("tpsbar", 0);
-
-		    NXT_SendTXT("gear", "");
-		    NXT_SendTXT("rad_state", "");
-		    NXT_SendFloat("afr", 1.00, 2);
-		    NXT_SendFloat("bat_v", 1.00, 2);
-		    NXT_SendFloat("oil_temp", 1.00, 2);
-		    fl++;
-		    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-		    		    HAL_Delay(1000);
-	  }
-	  CAN_Rx();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+	  NXT_SendNum("tpsbar", (b+10)%100);
+	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+	  HAL_Delay(200);
+	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+	  HAL_Delay(200);
   }
   /* USER CODE END 3 */
 }
@@ -481,6 +466,17 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief NVIC Configuration.
+  * @retval None
+  */
+static void MX_NVIC_Init(void)
+{
+  /* USART1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
+}
+
+/**
   * @brief CAN Initialization Function
   * @param None
   * @retval None
@@ -496,10 +492,10 @@ static void MX_CAN_Init(void)
 
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN1;
-  hcan.Init.Prescaler = 72;
+  hcan.Init.Prescaler = 16;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_16TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
@@ -590,10 +586,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_7|GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_6|GPIO_PIN_7
+                          |GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5|GPIO_PIN_9, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -606,16 +603,28 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB3 PB4 PB6 PB7
-                           PB8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_6|GPIO_PIN_7
-                          |GPIO_PIN_8;
+  /*Configure GPIO pins : PB3 PB4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB5 PB9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB6 PB7 PB8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
