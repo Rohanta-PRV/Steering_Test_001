@@ -19,10 +19,16 @@
 #include <string.h>
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_it.h"
-//#include "ShiftingLED.c"
-//#include "can.h"
+#include <stdbool.h>
 
+//#include "can.h"
 //#include "Nextion.h"
+
+// SELF DEFINED Header files
+#include "ShifterLEDs.h"
+#include "NXT_Functions.h"
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,12 +40,6 @@
 /* USER CODE BEGIN PD */
 //#define MAX_RPM 9000
 //#define LEDS 15
-
-// Pin definition for the Nextion (NXT) display
-#define NXT_TX_PIN GPIO_PIN_9
-#define NXT_TX_PORT GPIOA
-#define NXT_RX_PIN GPIO_PIN_10
-#define NXT_RX_PORT GPIOA
 
 // pin definition for the first register
 /*
@@ -72,31 +72,18 @@
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
-
-UART_HandleTypeDef huart1;
+HAL_StatusTypeDef stat;
+UART_HandleTypeDef huart1;				// Declared in the "NXT_Functions.c" src file
 
 /* USER CODE BEGIN PV */
-char* deviationCheckFail = "DEV FAIL\r\n";
 char* STM_ded = "STM ded!\r\n";
 float value1, value2;
-char gear;
+char gear, lol, unit;
 
-uint8_t currentVal; uint8_t currentVal1;
+int8_t units_val;
 uint8_t canData[8];
 
-uint8_t *a_value = (uint8_t *)&canData[0]; //GEAR
-uint8_t *b_value = (uint8_t *)&canData[1];
-uint8_t *c_value = (uint8_t *)&canData[2];
-uint8_t *d_value = (uint8_t *)&canData[3];
-uint8_t *e_value = (uint8_t *)&canData[4];
-uint8_t *f_value = (uint8_t *)&canData[5];
-uint8_t *g_value = (uint8_t *)&canData[6];
-uint8_t *h_value = (uint8_t *)&canData[7];
-
-volatile uint16_t *x_value = (volatile uint16_t *)&canData[0];
-volatile uint16_t *y_value = (volatile uint16_t *)&canData[2];
-volatile uint16_t *z_value = (volatile uint16_t *)&canData[3];
-volatile uint16_t *w_value = (volatile uint16_t *)&canData[6];
+uint16_t a_val = 0, b_val = 0, c_val = 0, d_val = 0;
 
 /* USER CODE END PV */
 
@@ -108,203 +95,157 @@ static void MX_USART1_UART_Init(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
-void NXT_SendNum(char *obj, int32_t num);
-void NXT_SendFloat(char *obj, float num, int dp);
-void NXT_SendPB(char *obj, uint16_t num);
-void NXT_SendTXT(char *obj, char val[]);
-//void HC595write();
-//void HC595write1();
+void Errrwhatthesigma(char *errMsg, int f);
+void ErrLedBlink(int f);
 
-// function definition for LED Driving
-//void updateLEDs(uint16_t val);
-//void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef *stcp_port, uint16_t stcp_pin, GPIO_TypeDef *shcp_port, uint16_t schp_pin, GPIO_TypeDef *mr_port, uint16_t mr_pin);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 CAN_RxHeaderTypeDef RxHeader;
+CAN_TxHeaderTypeDef TxHeader;
 
-uint8_t cmd_end[3] = {0xFF, 0xFF, 0xFF};
-char msg[50];
+char* HAL_StatusToString(HAL_StatusTypeDef status) {
+    switch(status) {
+        case HAL_OK:      return "OK";					// HAL_OK
+        case HAL_ERROR:   return "ERROR";				// HAL_ERROR
+        case HAL_BUSY:    return "BUSY";				// HAL_BUSY
+        case HAL_TIMEOUT: return "TIMEOUT";				// HAL_TIMEOUT
+        default:          return "IDK";					// UNKNOWN STATUS
+    }
+}
+
+void Errrwhatthesigma(char errMsg[], int f){				// main user defined Error / ALERT handling function
+
+	if(f==3){												// LOW PRIORITY
+		NXT_SendCmd("errMsg", "bco", 65535, "", false);		// changes the colour of the gear txt box to white.
+		NXT_SendCmd("errMsg", "pco", 0, "", false);			// changes the colour of the text inside the "Gear" txt box to black
+		NXT_SendTXT("errMsg", errMsg);
+		ErrLedBlink(f);
+	}
+	else if(f==2){											// MEDIUM PRIORITY
+		NXT_SendCmd("errMsg", "bco", 65505, "", false);		// changes the colour of the gear txt box to yellow.
+		NXT_SendCmd("errMsg", "pco", 0, "", false);			// changes the colour of the text inside the "Gear" txt box to black
+		NXT_SendTXT("errMsg", errMsg);
+		ErrLedBlink(f);
+	}
+	else if(f==1){											// HIGH PRIORITY
+		NXT_SendCmd("errMsg", "bco", 51200, "", false);		// changes the colour of the gear txt box to red.
+		NXT_SendCmd("errMsg", "pco", 65535, "", false);		// changes the colour of the text inside the "Gear" txt box to white
+		NXT_SendTXT("errMsg", errMsg);
+		ErrLedBlink(f);
+	}
+	else{
+		NXT_SendTXT("rad_state", errMsg);
+		ErrLedBlink(f);
+	}
+}
+
+void ErrLedBlink(int f){
+	int x = 0;
+	while((x++) < 20){
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+		/*
+		if(f == 1)				// HIGH PRIORITY / SYSTEM CRITICAL
+			HAL_Delay(200);
+		else if(f == 2)			// MEDIUM PRIORITY
+			HAL_Delay(750);
+
+		else if(f == 3)			// LOW PRIORITY
+			HAL_Delay(1250);
+		else
+			HAL_Delay(3000);
+		*/
+		(f==1) ? HAL_Delay(200) : (f==2) ? HAL_Delay(750) : (f==3) ? HAL_Delay(1250) : HAL_Delay(2000);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+		(f==1) ? HAL_Delay(200) : (f==2) ? HAL_Delay(750) : (f==3) ? HAL_Delay(1250) : HAL_Delay(2000);
+	}
+}
+
+void deelay(uint8_t x){
+	while(x-- == 0){
+		for(uint8_t i = 0 ; i < 10000 ; i++);
+	}
+}
 
 //	Predefined functions for sending different data to display
-void NXT_SendNum(char *obj, int32_t num){
 
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // Enable onboard led to signify starting of transmission
-	uint8_t *buffer = malloc(30 * sizeof(char));
-	int len = sprintf((char *) buffer, "%s.val=%ld", obj, num); //change to %ld
-	HAL_UART_Transmit(&huart1, buffer, len, 1000); // hal_uart1, uint8_t data, uint16_t size, uint32_t timeout
-	HAL_UART_Transmit(&huart1, cmd_end, 3, 100);
-	free(buffer);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-}
-
-void NXT_SendFloat(char *obj, float num, int dp){
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	int32_t number = num * (pow(10,dp));
-	uint8_t *buffer = malloc(30 * sizeof(char));
-	int len = sprintf((char *)buffer, "%s.vvs1=%d", obj, dp);
-	HAL_UART_Transmit(&huart1, buffer, len, 1000); // hal_uart1, uint8_t data, uint16_t size, uint32_t timeout
-	HAL_UART_Transmit(&huart1, cmd_end, 3, 100);
-
-	len = sprintf((char *)buffer, "%s.val=%ld", obj, number);
-	HAL_UART_Transmit(&huart1, buffer, len, 1000); // hal_uart1, uint8_t data, uint16_t size, uint32_t timeout
-	HAL_UART_Transmit(&huart1, cmd_end, 3, 100);
-	free(buffer);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-}
-
-void NXT_SendPB(char *obj, uint16_t num){
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	uint8_t *buffer = malloc(30 * sizeof(char));
-
-	int len = sprintf((char *)buffer, "%s=%u", obj, num); //%u is unsigned integer
-	HAL_UART_Transmit(&huart1, buffer, len, 1000); // hal_uart1, uint8_t data, uint16_t size, uint32_t timeout
-	HAL_UART_Transmit(&huart1, cmd_end, 3, 100);
-	free(buffer);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-}
-
-void NXT_SendTXT(char *obj, char val[]){
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	uint8_t *buffer = malloc(30 * sizeof(char));
-
-	int len = sprintf((char *)buffer, "%s.txt=\"%s\"", obj, val);
-	HAL_UART_Transmit(&huart1, buffer, len, 1000);
-	HAL_UART_Transmit(&huart1, cmd_end, 3, 100);
-	free(buffer);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-}
-
-// LED DRIVING CODE 1
-/*
-void update_LEDs(uint16_t value){
-
-	uint16_t led1 = 0, led2 = 0;
-	uint8_t litLEDs = value * (LEDS / MAX_RPM);
-
-	for(uint8_t i = 0 ; i < litLEDs ; i++){
-		if(i < 8)
-			led1 |= (1 << i);
-		else
-			led2 |= (1 << (i-8));
-	}
-	//sending data to first reg
-	shiftOP(led1, GPIOB, GPIO_PIN_6, GPIOB, GPIO_PIN_7, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9);
-	//sending data to second pin
-	shiftOP(led2, GPIOA, GPIO_PIN_15, GPIOB, GPIO_PIN_3, GPIOB, GPIO_PIN_4, GPIOB, GPIO_PIN_5);
-
-}
-
-void shiftOP(uint16_t data, GPIO_TypeDef *ds_port, uint16_t ds_pin, GPIO_TypeDef *stcp_port, uint16_t stcp_pin, GPIO_TypeDef *shcp_port, uint16_t shcp_pin, GPIO_TypeDef *mr_port, uint16_t mr_pin){
-
-	HAL_GPIO_WritePin(mr_port, mr_pin, GPIO_PIN_RESET); HAL_Delay(1);
-	HAL_GPIO_WritePin(shcp_port, shcp_pin, GPIO_PIN_RESET);
-
-	for(int8_t i = 7 ; i >= 0 ; i--){
-		HAL_GPIO_WritePin(shcp_port, shcp_pin, GPIO_PIN_RESET);
-
-		HAL_GPIO_WritePin(shcp_port, ds_pin, (data & (1 << i)) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-
-		HAL_GPIO_WritePin(shcp_port, shcp_pin, GPIO_PIN_SET);
-	}
-	HAL_GPIO_WritePin(stcp_port, stcp_pin, GPIO_PIN_SET);
-
-}*/
-
-//LED DRIVING CODE 2
-void HC595write()
-{
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-  HAL_Delay(1); // Ensure the register is cleared
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
-
-    for(int i=0; i<8; i++)
-    {
-    	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-    	//HAL_Delay(900);
-    	currentVal = currentVal >> 1;
-    	if(currentVal & (1<<i))
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-
-        else
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-        //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-        //HAL_Delay(900);
-    }
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-}
-void HC595write1()
-{
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
-  HAL_Delay(1); // Ensure the register is cleared
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
-
-    for(int i=0; i<8; i++)
-    {
-    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-    	HAL_Delay(100);
-    	currentVal1 = currentVal1 >> 1;
-        if(currentVal1 & (1<<i))
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-        else
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
-
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-        HAL_Delay(100);
-    }
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);
-}
+//LED DRIVING CODE GOES HERE
 
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	NXT_SendTXT("rad_state", "EMPTY"); HAL_Delay(2000);
-	while(! HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO1));
+	// could keep in infinite loop and keep checking if it getting filled, and after some time (1 min), if it doesn't, send to error handling.
+	uint32_t FifoFill = HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO1);
+	while(! FifoFill){
+		Errrwhatthesigma("!FIFO_FILL", 3);
+		Error_Handler();
+	}
+	NXT_SendNum("map", FifoFill);					// Shares the fill level of FIFO1 to see how many messages are filling up the queue.
+
 	NXT_SendTXT("rad_state", "FILL"); HAL_Delay(2000);
-    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, canData) != HAL_OK)
-    {
+
+	stat = HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, canData);
+    if (stat != HAL_OK){							// Tells us if the CAN bus is ready, listening or not.
+    	Errrwhatthesigma(HAL_StatusToString(stat), 3);
     	Error_Handler();
     }
-    NXT_SendTXT("rad_state", "NO_ERH"); HAL_Delay(2000);
-    if(RxHeader.ExtId == 0x18F00400){
-    		// RPM (uint16_t)
-    	value1 = (float)(*z_value)*0.125;
-    	NXT_SendNum("rpm", (int32_t)value1);
+    NXT_SendTXT("rad_state", "RxMsgRcvd");
+    //NXT_SendNum("map", 2);						// will continue to show number of meesages in fifo until the code if figured out.
+    HAL_Delay(2000);
+
+    if(RxHeader.ExtId == 0x18F00400){							// ID: 0CFFF048
+    	//value1 = (float)(*z_value)*0.125;
+    	a_val = (canData[1] << 8) | canData[0];					// RPM (uint16_t)
+    	NXT_SendNum("rpm", (int32_t)a_val);
+    	    // 2. Next 2 bytes as signed 16-bit integer
+    	b_val = (int16_t)((canData[3] << 8) | canData[2]);		// TPS (int16_t)
+    	// if (b_val > 32767) b_val -= 65536;
+
+    	NXT_SendNum("tpsbar", (int32_t)(b_val)); // can just output canData[2] as high byte (canData[3]) will always be 00
+/*
+    	    // 3. Next 2 bytes as signed 16-bit integer
+    	c_val = (int16_t)((canData[4] << 8) | canData[5]);		// FUEL OPEN TIME (int16_t)
+    	if (c_val > 32767) c_val -= 65536;
+    	NXT_SendNum("rpm", (int32_t)a_val);
+    	    // 4. Last 2 bytes as signed 16-bit integer
+    	d_val = (int16_t)((canData[6] << 8) | canData[7]);		// INJECTOR ANGLE (int16_t)
+    	if(d_val > 32767) d_val -= 65536;
+    	*/
     	// CALL THE UPDATE LED FUNCTION HEREAT
-    	// sprintf(msg,"%0.2f,",value1);
-    	// HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+
     }
-    else if(RxHeader.ExtId == 0x18FEEE00){
-    	// COOLANT
-    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-		HAL_Delay(1000);
-   		value1 = (float)(*c_value)*1;
-   		NXT_SendFloat("oil_temp", value1, 2);
-   		sprintf(msg,"oil_temp : %0.2f\n",value1);
-   		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
-    	if(value1 > 80){
+
+    else if(RxHeader.ExtId == 0x18FEEE00){						// ID: 0CFFF548
+
+    	units_val = (int8_t)(canData[7]);						// TEMPERATURE TYPE / UNIT (0 / 1)
+    	if(units_val == 01) unit = 'C';
+    	else unit = 'F';
+
+   		//value1 = (float)(*c_value)*1;
+    	a_val = (int32_t)(canData[1] << 8) | canData[0];		// BATTERY VOLTAGE (uint)
+    	NXT_SendFloat("bat_v", (float)(a_val*0.01), 2);
+
+    	/* 	// can remove comments once we have acquire a sensor for the same
+    	b_val = (int16_t)((canData[3] << 8) | canData[2]);		// AIR TEMP (signed int)
+    	if (b_val > 32767) b_val -= 65536;
+    	NXT_SendNum("tpsbar", (int32_t)b_val);*/
+
+    	c_val = (int16_t)((canData[5] << 8) | canData[4]);		// COOLANT TEMP (signed int)
+    	if (c_val > 32767) c_val -= 65536;
+   		NXT_SendFloat("oil_temp", (float)(c_val*0.01), 2);
+
+    	if(c_val > 8000){
+    		NXT_SendCmd("rad_state", "bco", 65505, "", false); 		// Turns the radiator state box to yellow to signify change
     		NXT_SendTXT("rad_state", "ON");
-    		sprintf(msg,"rad_state : ON\n");
-    		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    		deelay(2);
     	}
-    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-    	HAL_Delay(1000);
+
+
+
+
     }
-    else if(RxHeader.ExtId == 0x18FEF717){
+    /*
+    else if(RxHeader.ExtId == 0x18FEF717){						// ID: ???
     	// BATTERY VOTLAGE
     	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
     	  HAL_Delay(1000);
@@ -320,7 +261,7 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
     		sprintf(msg,"Gear : %d \r\n",gear);
     		HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg),1000);
     }
-    else if(RxHeader.ExtId == 0x0CF00301){
+    else if(RxHeader.ExtId == 0x0CF00301){						// ID: ???
     		// tps
     	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
     	HAL_Delay(1000);
@@ -330,15 +271,16 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
     	HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
     	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
     	HAL_Delay(1000);
-   	}
+   	}*/
 
     else{
-    	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-    	sprintf(msg,"ID : %lu \r\n",RxHeader.ExtId);
-   		HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+    	NXT_SendNum("map", RxHeader.ExtId);
+    	//sprintf(msg,"ID : %lu \r\n",RxHeader.ExtId);
+   		//HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
     }
 
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -375,14 +317,15 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
-  NXT_SendTXT("rad_state", "");
-  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
+  NXT_SendTXT("rad_state", ""); HAL_Delay(3000);
+  stat = HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
+  if(stat != HAL_OK){
+	  Errrwhatthesigma(HAL_StatusToString(stat), 2);
+	  Error_Handler();
+  }
 
-  currentVal = (0b01111111);
-  HC595write();
-  currentVal1 = (0b11111111);
-  //HC595write1();
-
+    HC95write();
+    HC95write1();
   // INITIALIZING THE VALUES FOR STARTUP
   NXT_SendTXT("t4", "BPS");
   NXT_SendTXT("t5", "TPS");
@@ -400,10 +343,9 @@ int main(void)
   NXT_SendFloat("bat_v", 1.00, 2);
   NXT_SendFloat("oil_temp", 1.00, 2);
   // fill in with the other values. This will signify that the code has started.
-
-  if(HAL_CAN_Start(&hcan) != HAL_OK)
-  {
-  	  NXT_SendTXT("gear", "!CAN");
+  stat = HAL_CAN_Start(&hcan);
+  if(stat != HAL_OK){
+  	  Errrwhatthesigma(HAL_StatusToString(stat), 2);
   	  Error_Handler();
   }
 
@@ -411,17 +353,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int b=0;
+  //int b=0;
   while(1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  NXT_SendNum("tpsbar", (b+10)%100);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-	  HAL_Delay(200);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-	  HAL_Delay(200);
+
+	  //NXT_SendNum("tpsbar", (b+10)%100);
   }
   /* USER CODE END 3 */
 }
@@ -492,11 +431,11 @@ static void MX_CAN_Init(void)
 
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN1;
-  hcan.Init.Prescaler = 16;
+  hcan.Init.Prescaler = 18;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_16TQ;
-  hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_5TQ;
+  hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
   hcan.Init.AutoWakeUp = DISABLE;
@@ -523,6 +462,7 @@ static void MX_CAN_Init(void)
 
   	if(HAL_CAN_ConfigFilter(&hcan, &can_filter_init) != HAL_OK)
   	{
+  		Errrwhatthesigma(HAL_StatusToString(HAL_CAN_ConfigFilter(&hcan, &can_filter_init)), 2);
   		Error_Handler();
   	}
   /* USER CODE END CAN_Init 2 */

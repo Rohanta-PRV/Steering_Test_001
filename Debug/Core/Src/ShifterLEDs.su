@@ -1,0 +1,2 @@
+../Core/Src/ShifterLEDs.c:8:6:HC95write	8	static
+../Core/Src/ShifterLEDs.c:15:6:HC95write1	8	static

@@ -1,0 +1,5 @@
+../Core/Src/NXT_Functions.c:25:6:NXT_SendNum	24	static
+../Core/Src/NXT_Functions.c:37:6:NXT_SendFloat	48	static
+../Core/Src/NXT_Functions.c:54:6:NXT_SendPB	24	static
+../Core/Src/NXT_Functions.c:67:6:NXT_SendTXT	24	static
+../Core/Src/NXT_Functions.c:80:6:NXT_SendCmd	40	static
