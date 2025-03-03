@@ -73,7 +73,7 @@
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 HAL_StatusTypeDef stat;
-UART_HandleTypeDef huart1;				// Declared in the "NXT_Functions.c" src file
+UART_HandleTypeDef huart1;				// Declared in the "NXT_Functions.c" src file as "huart"
 
 /* USER CODE BEGIN PV */
 char* STM_ded = "STM ded!\r\n";
