@@ -117,8 +117,3 @@ Ensure the CAN bus is properly terminated (≈60Ω total).
   - Verify UART baud rate matches the Nextion project
 - Use PC13 LED blink patterns to identify fatal errors
 
-
-## 👥 Authors & Team
-
-Developed by the **Formula Student Electronics Team**  
-Maintained for reliability, clarity, and scrutineering compliance.
